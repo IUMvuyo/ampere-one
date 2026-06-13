@@ -25,7 +25,9 @@
 // ---------- CONSTANTS (calibrate these) ----------
 #define MAINS_VOLTAGE     230.0   // SA nominal; replace with ZMPT reading for true power
 #define POWER_FACTOR      0.95    // assumed; resistive-ish loads
-#define CT_CAL            30.0    // SCT-013-030 = 30A per 1V output
+#define CT_CAL            30.0    // SCT-013-030 = 30A per 1V (voltage output, NO burden resistor).
+                                  // If you buy the SCT-013-100A (100A:50mA current output) instead,
+                                  // add a ~33Ω burden resistor across the jack and set CT_CAL = 60.6.
 #define ADC_REF           3.3
 #define ADC_COUNTS        4096.0
 #define ENERGY_SAMPLES    1480    // ~ a few mains cycles of sampling
