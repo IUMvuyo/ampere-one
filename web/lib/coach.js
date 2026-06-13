@@ -3,6 +3,7 @@
 
 import { ELECTRICITY_R_PER_KWH, isPeakNow, waterMarginalRate } from './tariffs';
 import { GRID_CO2_KG_PER_KWH } from './carbon';
+import { proxyBase } from './proxy';
 
 // telemetry: { w, tank, lpm, leak }
 // ctx: { appliances: [{name,watts}], stage, monthlyWaterKl, psh }
@@ -68,6 +69,25 @@ export function coachInsights(telemetry, ctx = {}) {
     out.push({ icon: '✅', priority: 9, rand: 0, text: 'All resources nominal.', action: 'No waste detected right now.' });
   }
   return out.sort((a, b) => a.priority - b.priority);
+}
+
+// Live AI coach line via the proxy (Claude). Returns null when the proxy / key
+// isn't configured — the rule-based insights above always stand on their own.
+export async function getAiCoachLine(telemetry, context) {
+  const base = proxyBase();
+  if (!base) return null;
+  try {
+    const r = await fetch(`${base}/coach`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ telemetry, context }),
+    });
+    if (!r.ok) return null; // 503 when ANTHROPIC_API_KEY unset
+    const j = await r.json();
+    return j && j.text ? j.text : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // CO2 saved if the user acts on the energy insights (rough monthly figure).

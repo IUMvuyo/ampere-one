@@ -1,9 +1,9 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTelemetry } from '@/lib/useTelemetry';
 import { ELECTRICITY_R_PER_KWH } from '@/lib/tariffs';
 import { GRID_CO2_KG_PER_KWH } from '@/lib/carbon';
-import { coachInsights } from '@/lib/coach';
+import { coachInsights, getAiCoachLine } from '@/lib/coach';
 import { rand, num } from '@/lib/format';
 import Sparkline from './Sparkline';
 import Gauge from './Gauge';
@@ -25,6 +25,26 @@ export default function Dashboard() {
     () => coachInsights(latest, { appliances, stage, monthlyWaterKl: 15 }),
     [latest, appliances, stage]
   );
+
+  // Live AI coach line (Claude via proxy) — polled, not per-sample, to respect cost.
+  const [aiLine, setAiLine] = useState(null);
+  const liveRef = useRef({});
+  liveRef.current = { latest, appliances, stage };
+  useEffect(() => {
+    if (source === 'idle') { setAiLine(null); return; }
+    let alive = true;
+    const tick = async () => {
+      const c = liveRef.current;
+      const line = await getAiCoachLine(c.latest, {
+        appliances: c.appliances.map((a) => ({ name: a.name, watts: a.watts })),
+        stage: c.stage,
+      });
+      if (alive && line) setAiLine(line);
+    };
+    tick();
+    const id = setInterval(tick, 20000);
+    return () => { alive = false; clearInterval(id); };
+  }, [source]);
 
   const dot = source === 'device' ? 'live' : source === 'demo' ? 'demo' : 'off';
   const srcLabel = source === 'device' ? 'Live device' : source === 'demo' ? 'Demo mode' : 'Not connected';
@@ -96,7 +116,12 @@ export default function Dashboard() {
       {/* COACH + APPLIANCES */}
       <div className="grid cols-2" style={{ marginBottom: 16 }}>
         <div className="panel">
-          <h3>🧠 AI resource coach</h3>
+          <h3>🧠 AI resource coach {aiLine && <span className="tag" style={{ color: 'var(--green)', borderColor: 'var(--green)' }}>✨ Claude</span>}</h3>
+          {aiLine && (
+            <div style={{ background: 'var(--panel-2)', border: '1px solid var(--green)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, fontSize: 14, lineHeight: 1.45 }}>
+              {aiLine}
+            </div>
+          )}
           {insights.map((i, k) => (
             <div className="insight" key={k}>
               <span className="ic">{i.icon}</span>
