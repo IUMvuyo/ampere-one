@@ -3,20 +3,21 @@ import { useEffect, useState } from 'react';
 import { getAirQuality, aqiBand } from '@/lib/airquality';
 
 // Live air quality (Open-Meteo) — the environmental-protection tie-in.
-export default function AirQualityPanel() {
+export default function AirQualityPanel({ lat = -26.2041, lng = 28.0473, place = 'Johannesburg' }) {
   const [aq, setAq] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    getAirQuality().then((d) => alive && setAq(d)).catch(() => alive && setErr('Could not load air quality'));
+    setAq(null); setErr(null);
+    getAirQuality(lat, lng).then((d) => alive && setAq(d)).catch(() => alive && setErr('Could not load air quality'));
     return () => { alive = false; };
-  }, []);
+  }, [lat, lng]);
 
   const band = aq ? aqiBand(aq.aqi) : null;
   return (
     <div className="panel">
-      <h3>🌫️ Air quality · Johannesburg</h3>
+      <h3>🌫️ Air quality · {place}</h3>
       {err && <div className="muted" style={{ fontSize: 13 }}>{err}</div>}
       {!aq && !err && <div className="muted" style={{ fontSize: 13 }}>Loading live air quality…</div>}
       {aq && (

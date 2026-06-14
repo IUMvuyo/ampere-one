@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { getLoadShedding, fmtTime } from '@/lib/loadshedding';
 import { hasProxy } from '@/lib/proxy';
 
-// Live load-shedding (EskomSePush via ampere-proxy). Falls back to a manual stage
-// selector when NEXT_PUBLIC_PROXY_BASE isn't set or the upstream is unavailable.
+// Live national load-shedding stage (EskomSePush /status via ampere-proxy).
+// Falls back to a manual stage selector if the proxy/key is unavailable.
 export default function LoadShedding({ stage, setStage }) {
   const [live, setLive] = useState(null);
   const [tried, setTried] = useState(false);
@@ -18,7 +18,7 @@ export default function LoadShedding({ stage, setStage }) {
       if (d) { setLive(d); setStage(d.stage); }
     });
     load();
-    const id = setInterval(load, 5 * 60 * 1000); // refresh every 5 min
+    const id = setInterval(load, 5 * 60 * 1000);
     return () => { alive = false; clearInterval(id); };
   }, [setStage]);
 
@@ -28,15 +28,16 @@ export default function LoadShedding({ stage, setStage }) {
 
       {live ? (
         <div style={{ marginBottom: 12 }}>
-          {live.areaName && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{live.areaName}</div>}
-          {live.active ? (
-            <div style={{ color: 'var(--red)', fontWeight: 700 }}>
-              ⚠ Stage {live.active.stage} NOW — until {fmtTime(live.active.end)}
-            </div>
-          ) : live.next ? (
-            <div>Next: <b>Stage {live.next.stage}</b> at {fmtTime(live.next.start)}–{fmtTime(live.next.end)}</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{live.areaName} (national)</div>
+          {live.stage > 0 ? (
+            <div style={{ color: 'var(--red)', fontWeight: 700, fontSize: 18 }}>⚠ Stage {live.stage} active now</div>
           ) : (
-            <div style={{ color: 'var(--green)' }}>No scheduled cuts ahead. ✅</div>
+            <div style={{ color: 'var(--green)', fontWeight: 700, fontSize: 18 }}>No load-shedding ✅ (Stage 0)</div>
+          )}
+          {live.next && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Next change: Stage {live.next.stage} at {fmtTime(live.next.start)}
+            </div>
           )}
         </div>
       ) : (
@@ -53,8 +54,8 @@ export default function LoadShedding({ stage, setStage }) {
         {live
           ? 'The AI coach uses this live stage to recommend pre-charging heavy loads.'
           : tried && hasProxy()
-            ? 'Live feed unavailable (set ESKOMSEPUSH_KEY on the proxy). Using manual stage.'
-            : 'Set NEXT_PUBLIC_PROXY_BASE for live EskomSePush; manual stage feeds the coach for now.'}
+            ? 'Live feed unavailable — using manual stage.'
+            : 'Manual stage feeds the coach.'}
       </div>
     </div>
   );

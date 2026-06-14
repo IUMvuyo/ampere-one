@@ -10,10 +10,12 @@ import Gauge from './Gauge';
 import LoadShedding from './LoadShedding';
 import SolarPanel from './SolarPanel';
 import AirQualityPanel from './AirQualityPanel';
+import LocationPicker from './LocationPicker';
 
 export default function Dashboard() {
   const t = useTelemetry();
   const [stage, setStage] = useState(0);
+  const [loc, setLoc] = useState({ lat: -26.2041, lng: 28.0473, name: 'Johannesburg' });
   const { latest, history, appliances, source, error, totals, supported } = t;
 
   const avgW = history.length ? history.reduce((s, p) => s + p.w, 0) / history.length : latest.w;
@@ -60,6 +62,7 @@ export default function Dashboard() {
             {source !== 'idle' && <span className="tag">{source === 'device' ? 'ESP32 · BLE' : 'simulated telemetry'}</span>}
           </div>
           <div className="row">
+            <LocationPicker location={loc} onChange={setLoc} />
             <button className="btn primary" onClick={t.connectDevice} disabled={!supported} title={supported ? '' : 'Use Chrome/Edge desktop or Android'}>
               🔗 Connect device
             </button>
@@ -144,8 +147,8 @@ export default function Dashboard() {
       {/* CONTEXT: load-shedding / solar / air */}
       <div className="grid cols-3">
         <LoadShedding stage={stage} setStage={setStage} />
-        <SolarPanel dailyKwh={dailyKwh} />
-        <AirQualityPanel />
+        <SolarPanel dailyKwh={dailyKwh} lat={loc.lat} lng={loc.lng} place={loc.name} />
+        <AirQualityPanel lat={loc.lat} lng={loc.lng} place={loc.name} />
       </div>
     </div>
   );

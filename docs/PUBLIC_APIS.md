@@ -428,3 +428,372 @@ export const JHB_WATER = {
 - [CoJ Consolidated Tariffs FY2025/2026](https://joburg.org.za/documents_/Documents/Amendment%20of%20Tariff%20Charges/Consolidated-Tariffs-FY20252026.FINAL.pdf)
 - [Johannesburg Water tariff increase announcement — 1 July 2025](https://x.com/JHBWater/status/1953025758319796394)
 - [City Power tariff increase reporting (EWN)](https://www.ewn.co.za/2025/07/01/city-power-customers-to-pay-more-for-electricity-as-new-tariff-hike-takes-effect)
+
+---
+
+## ADDITIONAL FREE APIS (wave 2)
+
+**Research date:** 2026-06-14  
+**Scope:** 7 candidates assessed for keyless + CORS-enabled browser callability from a Next.js static/client-side context.
+
+### Verdict Table
+
+| API | Keyless? | CORS (browser-direct)? | Endpoint | What it adds |
+|---|---|---|---|---|
+| Open-Meteo Geocoding | Yes — no key ever required | **Yes — confirmed** | `https://geocoding-api.open-meteo.com/v1/search?name={query}&count=10&language=en&format=json` | City/suburb → lat/lng location picker; localises all existing Open-Meteo + ESP calls to user's actual suburb instead of hardcoded Joburg |
+| Open-Meteo Daily (sunrise/sunset/UV) | Yes — same API as Forecast | **Yes — confirmed** | `https://api.open-meteo.com/v1/forecast?latitude=-26.2041&longitude=28.0473&daily=sunrise,sunset,uv_index_max,daylight_duration&timezone=Africa%2FJohannesburg` | Accurate local sunrise/sunset in SAST + daily UV index max; no extra API needed — bolt onto existing forecast call |
+| World Bank Indicators | Yes — no key required | **No — CORS not supported; JSONP supported** | `https://api.worldbank.org/v2/country/ZA/indicator/{INDICATOR_CODE}?format=json&mrv=1` | SA CO2 per capita, electricity access %, renewable share — high-credibility impact data for grant/impact context panels |
+| PVGIS (European Commission JRC) | Yes — no key required | **No — AJAX/CORS explicitly blocked by policy** | `https://re.jrc.ec.europa.eu/api/v5_3/PVcalc?lat=-26.2041&lon=28.0473&peakpower=1&loss=14&outputformat=json` | Authoritative long-run PV yield (kWh/year per kWp) from 20+ years of satellite irradiance data; must be proxied |
+| Eskom national grid (live demand/supply) | N/A | N/A | No public JSON API exists | Eskom Data Portal is form-submit → email download only; `unofficialeskom.com` publishes SQLite file downloads, not a live API endpoint |
+| SA dam levels — DWS | N/A | N/A | No public JSON API exists | DWS NIWIS is a dashboard UI with CSV/Excel manual downloads only; no documented REST endpoint; `dws.gov.za` returns 403 to automated clients |
+| sunrise-sunset.org | Yes — no key required | **Yes — CORS explicitly enabled** | `https://api.sunrise-sunset.org/json?lat=-26.2041&lng=28.0473&date=today&formatted=0&tzid=Africa/Johannesburg` | Sunrise/sunset/solar noon/twilight times — **redundant** given Open-Meteo daily already covers this; only use if you need the dedicated service for some reason |
+
+---
+
+### Detailed Notes per Candidate
+
+#### W2-1. Open-Meteo Geocoding API — CONFIRMED: keyless + CORS-enabled
+
+**Endpoint:** `https://geocoding-api.open-meteo.com/v1/search`
+
+**Auth:** None. Keyless for non-commercial use, identical policy to all other Open-Meteo APIs.
+
+**CORS:** Yes. Open-Meteo sets permissive CORS headers across all its API subdomains. Confirmed callable directly from browser via the same policy governing the Forecast and Air Quality APIs already in use.
+
+**SA example request (Johannesburg search):**
+```
+GET https://geocoding-api.open-meteo.com/v1/search
+  ?name=Johannesburg
+  &count=5
+  &language=en
+  &format=json
+```
+
+**Verified live response shape:**
+```json
+{
+  "results": [
+    {
+      "id": 993800,
+      "name": "Johannesburg",
+      "latitude": -26.20227,
+      "longitude": 28.04363,
+      "elevation": 1753.0,
+      "feature_code": "PPLA",
+      "country_code": "ZA",
+      "country": "South Africa",
+      "country_id": 953987,
+      "timezone": "Africa/Johannesburg",
+      "population": 9418183,
+      "admin1_id": 1085594,
+      "admin2_id": 993800,
+      "admin3_id": 11505474,
+      "admin1": "Gauteng",
+      "admin2": "City of Johannesburg Metropolitan Municipality",
+      "admin3": "City of Johannesburg"
+    }
+  ],
+  "generationtime_ms": 0.5643368
+}
+```
+
+**Filter by country (SA only):** Add `&countryCode=ZA` to restrict results to South African locations. This prevents the picker returning Johannesburg, California or Johannesburg, Michigan ahead of the SA result.
+
+**Use in dashboard:** Drive a location search input. On selection, store `latitude` + `longitude` from the result and pass to all subsequent Open-Meteo Forecast, Air Quality, and EskomSePush calls. This eliminates the hardcoded `-26.2041,28.0473` constants and makes the dashboard accurate for Cape Town, Durban, Pretoria, etc.
+
+**Rate limits:** Undocumented for non-commercial use. Consistent with other Open-Meteo APIs: high throughput tolerated for normal usage, commercial use requires subscription.
+
+---
+
+#### W2-2. Open-Meteo Daily Params (sunrise/sunset/UV) — CONFIRMED: keyless + CORS-enabled (no new API needed)
+
+This is not a separate API — it is an extension of the existing Open-Meteo Forecast API already documented in Section 1. Add a `daily=` parameter block to the existing forecast request.
+
+**Exact daily parameter names:**
+- `sunrise` — ISO8601 local time of sunrise
+- `sunset` — ISO8601 local time of sunset
+- `daylight_duration` — seconds of daylight (divide by 3600 for hours)
+- `uv_index_max` — daily maximum UV Index (unitless integer scale)
+- `uv_index_clear_sky_max` — UV index assuming no cloud cover (useful for solar panel clear-sky modeling)
+
+**SA example request (bolt onto existing forecast call):**
+```
+GET https://api.open-meteo.com/v1/forecast
+  ?latitude=-26.2041
+  &longitude=28.0473
+  &daily=sunrise,sunset,uv_index_max,daylight_duration
+  &timezone=Africa%2FJohannesburg
+  &forecast_days=7
+```
+
+**Verified live response shape (Johannesburg, 2026-06-14):**
+```json
+{
+  "latitude": -26.186293,
+  "longitude": 28.026318,
+  "elevation": 1749.0,
+  "utc_offset_seconds": 7200,
+  "timezone": "Africa/Johannesburg",
+  "timezone_abbreviation": "GMT+2",
+  "daily_units": {
+    "time": "iso8601",
+    "sunrise": "iso8601",
+    "sunset": "iso8601",
+    "uv_index_max": "",
+    "daylight_duration": "s"
+  },
+  "daily": {
+    "time": ["2026-06-14", "2026-06-15", "2026-06-16"],
+    "sunrise": ["2026-06-14T06:52", "2026-06-15T06:53", "2026-06-16T06:53"],
+    "sunset":  ["2026-06-14T17:23", "2026-06-15T17:23", "2026-06-16T17:23"],
+    "uv_index_max": [5.0, 5.0, 5.0],
+    "daylight_duration": [37835.86, 37823.74, 37813.50]
+  }
+}
+```
+
+Joburg in mid-June: 10h 30m of daylight. UV Index 5 (Moderate) in winter — correctly lower than the summer peak of ~11 (Extreme) on the Highveld.
+
+**Use in dashboard:** Drive a "sun hours today" metric, a UV warning band (WHO scale: 1–2 Low, 3–5 Moderate, 6–7 High, 8–10 Very High, 11+ Extreme), and solar generation window (sunrise-to-sunset as the active production period).
+
+---
+
+#### W2-3. World Bank Indicators API — keyless, but NO native CORS; JSONP or proxy required
+
+**Auth:** None. The World Bank v2 API is fully public and requires no API key or registration.
+
+**CORS:** Not supported for standard browser `fetch()` calls. The API documentation explicitly offers JSONP as the browser workaround. Direct `fetch()` from a Next.js client component will be rejected by the browser with a CORS error.
+
+**Options for use in Ampere One:**
+1. Call from Next.js server-side (`getServerSideProps` or a Next.js API route) — no CORS restriction applies server-side.
+2. Use JSONP with `format=jsonP&prefix=callback` — works in browser but requires older callback-pattern integration, not idiomatic in a modern React/Next.js app.
+3. Add a thin proxy route at `/api/worldbank?indicator=` that server-side fetches and returns the data.
+
+**Recommended path:** Next.js API route. The data is annual (updates once a year) so cache aggressively — 24-hour TTL is fine.
+
+**Key SA indicators and their confirmed codes:**
+
+| Indicator | Code | Latest SA value (verified) | Year |
+|---|---|---|---|
+| Access to electricity (% of population) | `EG.ELC.ACCS.ZS` | **87.7%** | 2023 |
+| CO2 emissions per capita (metric tons) | `EN.ATM.CO2E.PC` | ~6.8 t (approximate) | 2021 |
+| Renewable electricity output (% of total) | `EG.ELC.RNEW.ZS` | ~6–8% (approximate) | 2021 |
+| Fossil fuel energy consumption (% of total) | `EG.USE.COMM.FO.ZS` | ~84% (approximate) | 2021 |
+
+**Verified example request + response (electricity access):**
+```
+GET https://api.worldbank.org/v2/country/ZA/indicator/EG.ELC.ACCS.ZS
+  ?format=json
+  &mrv=1
+  &per_page=1
+```
+
+Response:
+```json
+[
+  {
+    "page": 1, "pages": 1, "per_page": 1, "total": 1,
+    "sourceid": "2", "lastupdated": "2026-04-08"
+  },
+  [
+    {
+      "indicator": { "id": "EG.ELC.ACCS.ZS", "value": "Access to electricity (% of population)" },
+      "country": { "id": "ZA", "value": "South Africa" },
+      "countryiso3code": "ZAF",
+      "date": "2023",
+      "value": 87.7,
+      "unit": "",
+      "obs_status": "",
+      "decimal": 1
+    }
+  ]
+]
+```
+
+The response is a two-element array: `[0]` is pagination metadata, `[1]` is the data records array.
+
+**Use in dashboard:** An "Impact" or "SA energy context" panel showing the national electricity access gap (12.3% without electricity), CO2 per capita vs global average, renewable % trend. High credibility for grant applications and B2B pitch decks.
+
+---
+
+#### W2-4. PVGIS (European Commission JRC) — keyless, but CORS/AJAX explicitly blocked
+
+**Auth:** None. Fully public and free, no registration required.
+
+**CORS:** Explicitly blocked. The official PVGIS documentation states: "access to PVGIS APIs via AJAX is not allowed." The JRC administrators have confirmed this is a deliberate policy and will not change. All browser-originated AJAX calls are rejected.
+
+**Must be proxied.** Route through an `ampere-proxy` server-side route at `/api/pvgis/pvcalc`.
+
+**Endpoint (v5_3 — current as of June 2026; v5_1 was removed September 2024):**
+```
+https://re.jrc.ec.europa.eu/api/v5_3/PVcalc
+  ?lat=-26.2041
+  &lon=28.0473
+  &peakpower=3
+  &loss=14
+  &outputformat=json
+```
+
+**Key parameters:**
+- `lat`, `lon` — location (South Africa is fully covered)
+- `peakpower` — installed PV capacity in kWp (e.g. 3 for a typical SA residential system)
+- `loss` — total system losses in % (14% is the PVGIS default; accounts for wiring, inverter, temperature)
+- `mountingplace` — `free` (free-standing) or `building` (building-integrated, adds thermal penalty)
+- `angle` — panel tilt in degrees (optimal for Joburg is ~26°, matching the latitude)
+- `aspect` — azimuth; 0 = south-facing (correct for southern hemisphere)
+- `outputformat` — `json` for machine-readable response
+
+**Example response shape (abbreviated):**
+```json
+{
+  "inputs": {
+    "location": { "latitude": -26.2041, "longitude": 28.0473, "elevation": 1749.0 },
+    "pv_module": { "peak_power": 3.0, "system_loss": 14.0 }
+  },
+  "outputs": {
+    "totals": {
+      "fixed": {
+        "E_d": 14.26,
+        "E_m": 433.8,
+        "E_y": 5205.5,
+        "H(i)_d": 5.92,
+        "SD_y": 272.0,
+        "l_aoi": -2.85,
+        "l_spec": "1.67",
+        "l_tg": -4.37,
+        "l_total": -14.0
+      }
+    },
+    "monthly": {
+      "fixed": [
+        { "month": 1, "E_d": 13.46, "E_m": 417.2, "H(i)_d": 5.62, "SD_m": 34.8 },
+        "..."
+      ]
+    }
+  },
+  "meta": {
+    "inputs": "...",
+    "outputs": "Daily, monthly and yearly energy production [kWh], and yearly variability [kWh]"
+  }
+}
+```
+
+Key output fields:
+- `E_y` — annual energy yield in kWh (for the specified kWp system)
+- `E_m` — monthly average energy yield (kWh)
+- `E_d` — daily average energy yield (kWh)
+- `H(i)_d` — daily irradiation on the inclined plane (kWh/m²)
+- `SD_y` — standard deviation of annual production (inter-year variability)
+
+**Use in dashboard:** Solar ROI calculator — given a system size (kWp) and location, return the expected annual output and calculate payback period against Eskom tariff. This is the most authoritative freely available PV yield source; it uses 20+ years of satellite-derived irradiance data for SA and is the dataset used in formal feasibility studies.
+
+**Proxy note:** Add to `ampere-proxy` as `GET /api/pvgis/pvcalc?lat=&lon=&peakpower=&loss=`. Cache response for 30 days minimum — the underlying irradiance data is historical and does not change between requests for the same coordinates.
+
+---
+
+#### W2-5. Eskom National Grid Live Demand/Supply — NO PUBLIC API
+
+**Verdict: No viable integration path exists as of June 2026.**
+
+The Eskom Data Portal (`eskom.co.za/dataportal/`) operates as a form-submit system: users select datasets and a date range, submit a form, and receive a download link via email. There is no documented JSON REST endpoint.
+
+`unofficialeskom.com` publishes dashboards built from SQLite database file downloads (`eskom_metrics.sqlite`, `eskom.sqlite`). These are periodic file dumps, not a live API. There are no XHR endpoints exposed.
+
+The archived `mypowerstats` GitHub project used an `authKey`-based endpoint on `myeskom.co.za` that required scraping credentials from the dashboard page — this is exactly the screen-scraping / credential-scraping pattern that is off-limits under Ampere's red lines (ToS violation risk; archived in 2022, no longer functional).
+
+**No action.** Do not pursue. The load-shedding stage from EskomSePush (`/status`) is the appropriate proxy for grid stress visibility. National MW generation/demand numbers are not available via any legitimate free API.
+
+---
+
+#### W2-6. SA Dam Levels (DWS) — NO PUBLIC JSON API
+
+**Verdict: No machine-readable API exists as of June 2026.**
+
+The Department of Water and Sanitation NIWIS (National Integrated Water Information System) provides dam level data via dashboard UI at `dws.gov.za`. Data export is CSV or Excel only, triggered manually. The `dws.gov.za` domain returns 403 to automated HTTP clients. No REST or JSON endpoint is documented.
+
+The `dwa.gov.za/Hydrology/Weekly/` pages publish weekly HTML tables — scrapeable in theory but: (a) scraping is brittle and ToS-sensitive, and (b) data is weekly, not real-time.
+
+Community tracking sites (ourpower.co.za, mydorpie.com) display DWS-sourced data but do not publish their own JSON APIs.
+
+**Alternative approach if dam-level data is genuinely required:** Contact DWS directly for data-sharing agreement access to NIWIS feeds. This is the path used by academic and NGO researchers. Not viable for a zero-friction web dashboard integration.
+
+**No integration path.** The water story in Ampere One is better served by the existing Joburg Water tariff calculator (Section 6) and user-entered consumption data.
+
+---
+
+#### W2-7. sunrise-sunset.org — CONFIRMED: keyless + CORS-enabled, but redundant
+
+**Auth:** None. No key required, no registration.
+
+**CORS:** Yes — explicitly enabled per their changelog. Direct browser `fetch()` works.
+
+**Endpoint:**
+```
+GET https://api.sunrise-sunset.org/json
+  ?lat=-26.2041
+  &lng=28.0473
+  &date=today
+  &formatted=0
+  &tzid=Africa/Johannesburg
+```
+
+**Verified live response shape (Johannesburg, 2026-06-14):**
+```json
+{
+  "results": {
+    "sunrise": "2026-06-14T04:51:33+00:00",
+    "sunset": "2026-06-14T15:24:39+00:00",
+    "solar_noon": "2026-06-14T10:08:06+00:00",
+    "day_length": 37986,
+    "civil_twilight_begin": "2026-06-14T04:27:34+00:00",
+    "civil_twilight_end": "2026-06-14T15:48:38+00:00",
+    "nautical_twilight_begin": "2026-06-14T03:58:48+00:00",
+    "nautical_twilight_end": "2026-06-14T16:17:24+00:00",
+    "astronomical_twilight_begin": "2026-06-14T03:30:31+00:00",
+    "astronomical_twilight_end": "2026-06-14T16:45:41+00:00"
+  },
+  "status": "OK",
+  "tzid": "UTC"
+}
+```
+
+Note: the `tzid` param is accepted but the response timestamps are in UTC regardless — convert to SAST (+02:00) in the client.
+
+**Verdict: Redundant.** Open-Meteo Forecast API already returns `sunrise`, `sunset`, `daylight_duration`, and `uv_index_max` in the `daily=` block (see W2-2 above). There is no reason to add a second API dependency for the same data. Skip sunrise-sunset.org entirely.
+
+---
+
+### RECOMMENDED TO INTEGRATE NEXT
+
+Ranked by: confirmed keyless + confirmed CORS-OK + highest feature value for Ampere One.
+
+**1. Open-Meteo Geocoding API** — Rank: 1  
+Endpoint: `https://geocoding-api.open-meteo.com/v1/search?name={query}&count=10&countryCode=ZA&language=en&format=json`  
+Zero effort: same API family, same CORS policy, no new account or key. Unlocks the entire dashboard for every SA city — every existing Open-Meteo and EskomSePush call becomes location-aware instead of hardcoded to Joburg. This is the highest-leverage single addition.
+
+**2. Open-Meteo Daily (sunrise/sunset/UV index)** — Rank: 2  
+Endpoint: bolt `&daily=sunrise,sunset,uv_index_max,daylight_duration` onto the existing `https://api.open-meteo.com/v1/forecast` call already in use.  
+Literally zero new API surface — just additional parameters on an existing call. Adds a "solar window" visualisation (hours between sunrise and sunset when panels produce) and a UV index warning. Data verified live for Joburg June 2026.
+
+**3. World Bank Indicators API (via Next.js API route)** — Rank: 3  
+Endpoint (server-side): `https://api.worldbank.org/v2/country/ZA/indicator/EG.ELC.ACCS.ZS?format=json&mrv=1`  
+Requires a thin proxy route (`/api/worldbank`) but the data is annual, so cache at 24h and the proxy barely fires. Adds credible SA impact numbers (87.7% electricity access = 12.3% gap, CO2 per capita) that sharply strengthen the impact / grant narrative panels. World Bank sourcing is trusted by funders and corporates in SA cleantech.
+
+**Honorable mention — PVGIS (via proxy):** If a solar ROI calculator feature is on the roadmap, PVGIS is the correct data source (authoritative 20-year irradiance, covers all SA locations, free forever). Add it to `ampere-proxy` at that point. Not ranked in the top 3 because it requires a backend proxy addition and is only relevant when a specific feature ships, not for the current dashboard MVP.
+
+---
+
+### Wave 2 Sources
+
+- [Open-Meteo Geocoding API documentation](https://open-meteo.com/en/docs/geocoding-api)
+- [Open-Meteo Forecast API — daily parameters](https://open-meteo.com/en/docs)
+- [World Bank API — Basic Call Structures](https://datahelpdesk.worldbank.org/knowledgebase/articles/898581-api-basic-call-structures)
+- [World Bank — SA electricity access indicator](https://data.worldbank.org/indicator/EG.ELC.ACCS.ZS?locations=ZA)
+- [PVGIS API non-interactive service documentation](https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en)
+- [PVGIS tools overview (JRC)](https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/pvgis-tools_en)
+- [Eskom Data Portal](https://www.eskom.co.za/dataportal/)
+- [Unofficial Eskom dashboards (SQLite downloads)](https://unofficialeskom.com/dashboards/)
+- [DWS Open Data SA Toolkit — water and climate data](https://opendataza.gitbook.io/toolkit/open-data-resources/water-and-climate-data-resources)
+- [sunrise-sunset.org API documentation](https://sunrise-sunset.org/api)
+- [Electricity Maps — global carbon intensity coverage](https://www.electricitymaps.com/resources/updates/global-coverage-real-time-electricity-grid-data-for-110-additional-countries)
+- [emissions.dev — free carbon emissions API](https://emissions.dev/)
