@@ -11,11 +11,13 @@ import LoadShedding from './LoadShedding';
 import SolarPanel from './SolarPanel';
 import AirQualityPanel from './AirQualityPanel';
 import LocationPicker from './LocationPicker';
+import AiKeyButton from './AiKeyButton';
 
 export default function Dashboard() {
   const t = useTelemetry();
   const [stage, setStage] = useState(0);
   const [loc, setLoc] = useState({ lat: -26.2041, lng: 28.0473, name: 'Johannesburg' });
+  const [aiKeyV, setAiKeyV] = useState(0);
   const { latest, history, appliances, source, error, totals, supported } = t;
 
   const avgW = history.length ? history.reduce((s, p) => s + p.w, 0) / history.length : latest.w;
@@ -46,7 +48,7 @@ export default function Dashboard() {
     tick();
     const id = setInterval(tick, 20000);
     return () => { alive = false; clearInterval(id); };
-  }, [source]);
+  }, [source, aiKeyV]);
 
   const dot = source === 'device' ? 'live' : source === 'demo' ? 'demo' : 'off';
   const srcLabel = source === 'device' ? 'Live device' : source === 'demo' ? 'Demo mode' : 'Not connected';
@@ -119,7 +121,13 @@ export default function Dashboard() {
       {/* COACH + APPLIANCES */}
       <div className="grid cols-2" style={{ marginBottom: 16 }}>
         <div className="panel">
-          <h3>🧠 AI resource coach {aiLine && <span className="tag" style={{ color: 'var(--green)', borderColor: 'var(--green)' }}>✨ Claude</span>}</h3>
+          <div className="spread" style={{ marginBottom: 4 }}>
+            <h3 style={{ marginBottom: 0 }}>🧠 AI resource coach {aiLine && <span className="tag" style={{ color: 'var(--green)', borderColor: 'var(--green)' }}>✨ Claude</span>}</h3>
+            <AiKeyButton onChange={() => setAiKeyV((v) => v + 1)} />
+          </div>
+          {!aiLine && (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Add your Claude key (top-right) for live AI insights, or use the rule-based coach below.</div>
+          )}
           {aiLine && (
             <div style={{ background: 'var(--panel-2)', border: '1px solid var(--green)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, fontSize: 14, lineHeight: 1.45 }}>
               {aiLine}

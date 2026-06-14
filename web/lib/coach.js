@@ -71,23 +71,79 @@ export function coachInsights(telemetry, ctx = {}) {
   return out.sort((a, b) => a.priority - b.priority);
 }
 
-// Live AI coach line via the proxy (Claude). Returns null when the proxy / key
-// isn't configured — the rule-based insights above always stand on their own.
+const AI_SYSTEM = [
+  "You are Ampere One's resource coach for a South African home or small business.",
+  'You receive live electricity (watts) and water (litres/min, tank %, leak) telemetry plus detected appliances and the load-shedding stage.',
+  'Reply with ONE punchy, specific, actionable sentence (max 30 words).',
+  'Denominate savings in Rand where possible. Reference SA context (load-shedding, geyser, peak tariff, leaks).',
+  'No preamble, no greeting, no markdown — just the sentence.',
+].join(' ');
+
+function aiUserMsg(telemetry, context) {
+  return `Telemetry: ${JSON.stringify(telemetry)}\nContext: ${JSON.stringify(context)}\nGive the single highest-value action right now.`;
+}
+
+// localStorage helpers for the bring-your-own-key flow.
+export const AI_KEY_LS = 'ampere_ai_key';
+export const AI_MODEL_LS = 'ampere_ai_model';
+export const DEFAULT_AI_MODEL = 'claude-haiku-4-5-20251001';
+
+export function getStoredAiKey() {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(AI_KEY_LS) || '';
+}
+export function getStoredAiModel() {
+  if (typeof window === 'undefined') return DEFAULT_AI_MODEL;
+  return window.localStorage.getItem(AI_MODEL_LS) || DEFAULT_AI_MODEL;
+}
+
+// AI coach line. Bring-your-own-key first: the user's own Claude key (stored only
+// in their browser) calls Anthropic directly. Falls back to the proxy /coach if a
+// server key is set, else null → the rule-based insights stand alone.
 export async function getAiCoachLine(telemetry, context) {
-  const base = proxyBase();
-  if (!base) return null;
-  try {
-    const r = await fetch(`${base}/coach`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ telemetry, context }),
-    });
-    if (!r.ok) return null; // 503 when ANTHROPIC_API_KEY unset
-    const j = await r.json();
-    return j && j.text ? j.text : null;
-  } catch (_) {
-    return null;
+  // 1) Bring-your-own-key — browser → Anthropic directly (key never hits our servers).
+  const key = getStoredAiKey();
+  if (key) {
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: getStoredAiModel(),
+          max_tokens: 120,
+          system: AI_SYSTEM,
+          messages: [{ role: 'user', content: aiUserMsg(telemetry, context) }],
+        }),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        const t = (j?.content?.[0]?.text || '').trim();
+        if (t) return t;
+      }
+    } catch (_) { /* fall through */ }
   }
+
+  // 2) Optional server fallback (only if the proxy has its own key set).
+  const base = proxyBase();
+  if (base) {
+    try {
+      const r = await fetch(`${base}/coach`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetry, context }),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.text) return j.text;
+      }
+    } catch (_) { /* fall through */ }
+  }
+  return null;
 }
 
 // CO2 saved if the user acts on the energy insights (rough monthly figure).
