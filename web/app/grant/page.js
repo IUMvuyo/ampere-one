@@ -1,6 +1,11 @@
 import Link from 'next/link';
 
-export const metadata = { title: 'The Grant · Ampere One' };
+export const metadata = {
+  title: 'GCIP-SA Grant Case',
+  description:
+    'Why Ampere One wins the Global Cleantech Innovation Programme South Africa 2026: a live shipping product, a working R750 device, and verified resource-efficiency impact across energy and water.',
+  alternates: { canonical: '/grant' },
+};
 
 export default function GrantPage() {
   return (

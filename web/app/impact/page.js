@@ -1,7 +1,12 @@
 import ImpactCalculator from '@/components/ImpactCalculator';
 import SAContext from '@/components/SAContext';
 
-export const metadata = { title: 'Impact · Ampere One' };
+export const metadata = {
+  title: 'Impact Calculator',
+  description:
+    'Compute Ampere One\'s climate and economic impact: CO₂ avoided, kilolitres saved, and Rand returned to SA households — built on verified City Power tariffs and the DFFE 2023 grid emission factor.',
+  alternates: { canonical: '/impact' },
+};
 
 export default function ImpactPage() {
   return (

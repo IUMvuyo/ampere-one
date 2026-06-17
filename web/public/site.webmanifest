@@ -1,0 +1,14 @@
+{
+  "name": "Ampere One",
+  "short_name": "Ampere One",
+  "description": "One device measures your home's electricity and water. Live kWh, litres, Rand and CO₂ — with leak detection and an AI resource coach for South African homes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0e0d",
+  "theme_color": "#34d399",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

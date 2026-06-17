@@ -1,6 +1,11 @@
 import Dashboard from '@/components/Dashboard';
 
-export const metadata = { title: 'Live Dashboard · Ampere One' };
+export const metadata = {
+  title: 'Live Dashboard',
+  description:
+    'Real-time electricity + water dashboard for a South African home. Connect your Ampere One box or run the demo to see kWh, litres, appliance disaggregation, leak detection and the AI coach live.',
+  alternates: { canonical: '/dashboard' },
+};
 
 export default function DashboardPage() {
   return (
